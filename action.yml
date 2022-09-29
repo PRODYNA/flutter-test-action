@@ -1,0 +1,14 @@
+name: 'Your name here'
+description: 'Provide a description here'
+author: 'Your name or organization here'
+inputs:
+  project:
+    required: false
+    description: 'path to flutter project'
+    default: '.'
+  token:
+    required: true
+    description: 'GitHub API Token (PAT or GITHUB_TOKEN)'
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
