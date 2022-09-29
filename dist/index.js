@@ -52,7 +52,7 @@ class Suite extends GroupContainer {
     constructor(data, cwd) {
         var _a;
         super();
-        this.path = (_a = data.path) === null || _a === void 0 ? void 0 : _a.replace(cwd, "");
+        this.path = (_a = data.path) === null || _a === void 0 ? void 0 : _a.replace(cwd, '');
     }
 }
 class Group extends GroupContainer {
@@ -63,7 +63,7 @@ class Group extends GroupContainer {
         this.testCount = data.testCount;
     }
     hasTests() {
-        for (let [_, test] of this.tests) {
+        for (const [_, test] of this.tests) {
             if (!test.hidden)
                 return true;
         }
@@ -85,73 +85,134 @@ class Test {
         this.skipped = data.skipped;
     }
 }
+class Runner {
+    constructor(token, directory) {
+        this.directory = directory;
+        const context = github.context;
+        this.owner = context.repo.owner;
+        this.repo = context.repo.repo;
+        this.sha = context.sha;
+        this.baseUrl = `https://github.com/${this.owner}/${this.repo}/tree/${this.sha}`;
+        this.octokit = github.getOctokit(token);
+    }
+    printGroup(group, hLevel) {
+        var _a;
+        if (group.hasTests()) {
+            core.summary.addRaw('', true);
+            core.summary.addRaw('| Result | Name |', true);
+            core.summary.addRaw('| --- | --- |', true);
+            for (const [_, t] of group.tests) {
+                const url = `${this.baseUrl}${t.suite.path}#L${t.line}`;
+                if (!t.hidden) {
+                    const mark = {
+                        success: '✔️',
+                        error: '🚩',
+                        failure: '❌',
+                        unde: '❓'
+                    }[(_a = t.result) !== null && _a !== void 0 ? _a : 'unde'];
+                    core.summary.addRaw(`${mark} | [${t.name}](${url})`, true);
+                }
+            }
+            core.summary.addRaw('', true);
+        }
+        const hLevelInner = hLevel + 1;
+        for (const [_, g] of group.groups) {
+            core.summary.addHeading(`${g.name}`, hLevel);
+            this.printGroup(g, hLevelInner);
+        }
+    }
+    newCheckRun() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const check_run_create_response = yield this.octokit.rest.checks.create({
+                owner: this.owner,
+                repo: this.repo,
+                name: `test (${this.directory})`,
+                head_sha: this.sha,
+                status: 'in_progress'
+            });
+            return check_run_create_response.data;
+        });
+    }
+    conclusionStr(conclusion) {
+        if (conclusion === true) {
+            return 'success';
+        }
+        else if (conclusion === false) {
+            return 'failure';
+        }
+        else {
+            return 'timed_out';
+        }
+    }
+    updateCheckRun({ check_run, summary, text, conclusion }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.octokit.rest.checks.update({
+                owner: github.context.repo.owner,
+                repo: github.context.repo.repo,
+                check_run_id: check_run.id,
+                status: 'completed',
+                conclusion: this.conclusionStr(conclusion),
+                output: {
+                    title: `Tests of ${this.directory}`,
+                    summary,
+                    text
+                }
+            });
+        });
+    }
+}
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const directory = core.getInput("project");
-            const token = core.getInput("token");
-            core.summary.addHeading("Test Results", 1);
-            var expectedSuites = 0;
-            var suites = new Map();
-            var groups = new Map();
-            var tests = new Map();
-            let octokit = github.getOctokit(token);
-            const owner = github.context.repo.owner;
-            const repo = github.context.repo.repo;
-            const sha = github.context.sha;
-            let check_run_create_response = yield octokit.rest.checks.create({
-                owner: owner,
-                repo: repo,
-                name: `test (${directory})`,
-                head_sha: sha,
-                status: 'in_progress'
-            });
-            if (check_run_create_response.status != 201) {
-                core.setFailed("Could not create check run");
-                return;
-            }
-            let check_run = check_run_create_response.data;
+            const directory = core.getInput('project');
+            const token = core.getInput('token');
+            core.summary.addHeading('Test Results', 1);
+            let expectedSuites = 0;
+            const suites = new Map();
+            const groups = new Map();
+            const tests = new Map();
+            const runner = new Runner(token, directory);
+            const check_run = yield runner.newCheckRun();
             let conclusion = undefined;
             let summary = null;
-            let cwd = process.cwd();
-            yield exec.exec("flutter", ["test", "-r", "json"], {
+            const cwd = process.cwd();
+            yield exec.exec('flutter', ['test', '-r', 'json'], {
                 cwd: directory,
                 listeners: {
                     stdline: (line) => {
                         const data = JSON.parse(line);
-                        if (data.type == "done") {
+                        if (data.type === 'done') {
                             if (data.success === true) {
-                                summary = "All tests succeeded";
+                                summary = 'All tests succeeded';
                                 conclusion = true;
                             }
                             else if (data.success === false) {
-                                summary = "Some tests failed";
+                                summary = 'Some tests failed';
                                 conclusion = false;
                             }
                             else {
-                                summary = "Test runner terminated early";
+                                summary = 'Test runner terminated early';
                                 conclusion = null;
                             }
                             core.summary.addRaw(summary);
                         }
-                        else if (data.type == "suite") {
-                            expectedSuites -= 1;
+                        else if (data.type === 'suite') {
                             const id = data.suite.id;
                             suites.set(id, new Suite(data.suite, cwd));
                         }
-                        else if (data.type == "allSuites") {
+                        else if (data.type === 'allSuites') {
                             expectedSuites += data.count;
                         }
-                        else if (data.type == "group") {
+                        else if (data.type === 'group') {
                             const group = new Group(data.group);
                             const groupID = data.group.id;
                             const parentID = data.group.parentID;
                             const suiteID = data.group.suiteID;
-                            const parent = parentID == null ? suites.get(suiteID) : groups.get(parentID);
+                            const parent = parentID === null ? suites.get(suiteID) : groups.get(parentID);
                             parent.groups.set(groupID, group);
                             groups.set(groupID, group);
                         }
-                        else if (data.type == "testStart") {
+                        else if (data.type === 'testStart') {
                             const testID = data.test.id;
                             const suiteID = data.test.suiteID;
                             const groupIDs = data.test.groupIDs;
@@ -160,7 +221,7 @@ function run() {
                             let parent = suites.get(suiteID);
                             let name = data.test.name;
                             for (const id of groupIDs) {
-                                let group = parent.groups.get(id);
+                                const group = parent.groups.get(id);
                                 if (group.name.length > 0) {
                                     if (name.startsWith(group.name)) {
                                         name = name.substring(group.name.length).trimStart();
@@ -172,65 +233,28 @@ function run() {
                             parent.tests.set(testID, test);
                             tests.set(testID, test);
                         }
-                        else if (data.type == "testDone") {
+                        else if (data.type === 'testDone') {
                             const test = tests.get(data.testID);
                             test.onDone(data);
                         }
                     }
                 }
             });
-            function printGroup(group, hLevel) {
-                var _a;
-                if (group.hasTests()) {
-                    core.summary.addRaw("", true);
-                    core.summary.addRaw("| Result | Name |", true);
-                    core.summary.addRaw("| --- | --- |", true);
-                    for (let [_, t] of group.tests) {
-                        let url = `https://github.com/${owner}/${repo}/tree/${sha}${t.suite.path}#L${t.line}`;
-                        if (!t.hidden) {
-                            let mark = {
-                                success: '✔️',
-                                error: '🚩',
-                                failure: '❌',
-                                unde: '❓',
-                            }[(_a = t.result) !== null && _a !== void 0 ? _a : 'unde'];
-                            core.summary.addRaw(`${mark} | [${t.name}](${url})`, true);
-                        }
-                    }
-                    core.summary.addRaw("", true);
-                }
-                const hLevelInner = hLevel + 1;
-                for (let [_, g] of group.groups) {
-                    core.summary.addHeading(`${g.name}`, hLevel);
-                    printGroup(g, hLevelInner);
-                }
-            }
-            for (let [key, suite] of suites) {
+            for (const [key, suite] of suites) {
                 core.summary.addHeading(suite.path || `Suite ${key}`, 2);
-                for (let [_, group] of suite.groups) {
-                    printGroup(group, 3);
+                for (const [_, group] of suite.groups) {
+                    runner.printGroup(group, 3);
                 }
             }
-            let text = core.summary.stringify();
+            core.summary.addRaw(`\nRan ${suites.size}/${expectedSuites} Suites`);
+            const text = core.summary.stringify();
             core.summary.clear();
-            let check_update_response = yield octokit.rest.checks.update({
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
-                check_run_id: check_run.id,
-                status: 'completed',
-                conclusion: (conclusion === true) ? 'success' : (conclusion === false) ? 'failure' : 'timed_out',
-                output: {
-                    title: `Tests of ${directory}`,
-                    summary: summary,
-                    text: text,
-                }
+            runner.updateCheckRun({
+                check_run,
+                conclusion,
+                summary: summary !== null && summary !== void 0 ? summary : '<missing summary>',
+                text
             });
-            if (check_update_response.status != 200) {
-                core.setFailed(`Failed to update check`);
-            }
-            /*if (result != 0) {
-              core.setFailed(`Test runner failed (exit code ${result}`);
-            }*/
         }
         catch (error) {
             if (error instanceof Error)
