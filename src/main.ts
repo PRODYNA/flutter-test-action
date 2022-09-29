@@ -181,7 +181,7 @@ async function run(): Promise<void> {
     await exec.exec('flutter', ['test', '-r', 'json'], {
       cwd: directory,
       listeners: {
-        stdline: line => {
+        stdline: (line: string) => {
           const data: events.Event = JSON.parse(line)
           if (data.type === 'done') {
             if (data.success === true) {
