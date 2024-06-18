@@ -56,12 +56,6 @@ class Suite extends GroupContainer {
     }
 }
 class Group extends GroupContainer {
-    constructor(data) {
-        super();
-        this.name = data.name;
-        this.line = data.line;
-        this.testCount = data.testCount;
-    }
     hasTests() {
         for (const [_, test] of this.tests) {
             if (!test.hidden)
@@ -69,8 +63,19 @@ class Group extends GroupContainer {
         }
         return false;
     }
+    constructor(data) {
+        super();
+        this.name = data.name;
+        this.line = data.line;
+        this.testCount = data.testCount;
+    }
 }
 class Test {
+    onDone(data) {
+        this.hidden = data.hidden;
+        this.result = data.result;
+        this.skipped = data.skipped;
+    }
     constructor(data, suite) {
         var _a;
         this.suite = suite;
@@ -78,11 +83,6 @@ class Test {
         this.skipped = false;
         this.name = data.name;
         this.line = (_a = data.root_line) !== null && _a !== void 0 ? _a : data.line;
-    }
-    onDone(data) {
-        this.hidden = data.hidden;
-        this.result = data.result;
-        this.skipped = data.skipped;
     }
 }
 class Runner {
