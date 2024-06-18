@@ -57,7 +57,10 @@ class Test {
     this.skipped = data.skipped
   }
 
-  constructor(data: test_report.Test, public suite: Suite) {
+  constructor(
+    data: test_report.Test,
+    public suite: Suite
+  ) {
     this.name = data.name
     this.line = data.root_line ?? data.line
   }
@@ -81,7 +84,10 @@ class Runner {
   baseUrl: string
   octokit: InstanceType<typeof GitHub>
 
-  constructor(token: string, private directory: string) {
+  constructor(
+    token: string,
+    private directory: string
+  ) {
     const context = github.context
     this.owner = context.repo.owner
     this.repo = context.repo.repo
